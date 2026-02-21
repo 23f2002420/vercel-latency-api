@@ -1,43 +1,32 @@
 import json
 import numpy as np
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
 
-app = FastAPI()
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST", "OPTIONS"],
-    allow_headers=["*"],
-)
+def handler(request):
+    # CORS preflight
+    if request["method"] == "OPTIONS":
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            },
+        }
 
-
-class RequestBody(BaseModel):
-    regions: list[str]
-    threshold_ms: int
-
-
-# Load data at module level (Vercel cold start optimization)
-try:
-    with open("./q-vercel-latency.json", "r") as f:
-        TELEMETRY = json.load(f)
-except FileNotFoundError:
-    TELEMETRY = []
-
-
-@app.post("/analytics")
-async def analytics(request: Request):
-    body = await request.json()
+    # Parse POST body
+    body = json.loads(request["body"])
     regions = body.get("regions", [])
     threshold_ms = body.get("threshold_ms", 180)
 
+    # Load telemetry (same file path)
+    with open("./q-vercel-latency.json", "r") as f:
+        telemetry = json.load(f)
+
     results = {}
     for region in regions:
-        region_data = [r for r in TELEMETRY if r.get("region") == region]
+        region_data = [r for r in telemetry if r.get("region") == region]
         if not region_data:
             results[region] = {
                 "avg_latency": 0,
@@ -56,10 +45,12 @@ async def analytics(request: Request):
             "avg_uptime": float(np.mean(uptimes)),
             "breaches": int(np.sum(latencies > threshold_ms)),
         }
-    return results
 
-
-# Vercel health check
-@app.get("/")
-async def root():
-    return {"status": "ok", "endpoint": "/api/analytics"}
+    return {
+        "statusCode": 200,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Content-Type": "application/json",
+        },
+        "body": json.dumps(results),
+    }
