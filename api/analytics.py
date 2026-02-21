@@ -1,12 +1,9 @@
 import json
 import numpy as np
-import os
-import traceback
 
 
 def handler(request):
     try:
-        # CORS preflight
         if request["method"] == "OPTIONS":
             return {
                 "statusCode": 200,
@@ -17,31 +14,13 @@ def handler(request):
                 },
             }
 
-        # Parse POST body
         body = json.loads(request["body"])
         regions = body.get("regions", [])
         threshold_ms = body.get("threshold_ms", 180)
 
-        # Try multiple possible JSON paths (Vercel serverless quirk)
-        json_paths = [
-            "./q-vercel-latency.json",
-            "q-vercel-latency.json",
-            "/var/task/q-vercel-latency.json",
-        ]
-        telemetry = []
-        for path in json_paths:
-            try:
-                with open(path, "r") as f:
-                    telemetry = json.load(f)
-                break
-            except:
-                continue
-
-        if not telemetry:
-            return {
-                "statusCode": 500,
-                "body": json.dumps({"error": "Telemetry file not found"}),
-            }
+        # FIXED PATH - same folder as analytics.py
+        with open("q-vercel-latency.json", "r") as f:
+            telemetry = json.load(f)
 
         results = {}
         for region in regions:
@@ -74,8 +53,4 @@ def handler(request):
             "body": json.dumps(results),
         }
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": str(e), "traceback": traceback.format_exc()}),
-        }
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
